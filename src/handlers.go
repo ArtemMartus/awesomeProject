@@ -3,22 +3,39 @@ package src
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/julienschmidt/httprouter"
 	"net/http"
+	"regexp"
 	"strconv"
 )
 
-func IndexHandler(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
-	fmt.Fprint(w, "Welcome!\n")
+func Handlers() http.Handler {
+	out := http.NewServeMux()
+
+	out.HandleFunc("/", IndexHandler)
+	out.HandleFunc("/api/block/", BlockTotalHandler)
+	return out
 }
 
-func BlockTotalHandler(w http.ResponseWriter, r *http.Request, ps httprouter.Params) {
-	blockId, err := strconv.Atoi(ps.ByName("blockId"))
+func IndexHandler(w http.ResponseWriter, _ *http.Request) {
+	_, _ = fmt.Fprint(w, "Welcome!\n")
+}
+
+func BlockTotalHandler(w http.ResponseWriter, r *http.Request) {
+	validBlockId := regexp.MustCompile("/api/block/(?P<blockId>\\d*)/total")
+
+	strBlockId := validBlockId.FindStringSubmatch(r.RequestURI)
+	if len(strBlockId) <= 1 || strBlockId[1] == "" {
+		_, _ = fmt.Fprintf(w, "bad url = %s", r.RequestURI)
+		println("bad url", r.RequestURI)
+		return
+	}
+	println("blockid = ", strBlockId[1])
+	blockId, err := strconv.Atoi(strBlockId[1])
 	w.Header().Set("Content-Type", "application/json")
 
 	if err != nil {
-		fmt.Fprintf(w, "{\"error\"=\"bad block id\"}")
-		println(err)
+		_, _ = fmt.Fprintf(w, "{\"error\"=\"bad block id\"}")
+		println(err.Error())
 		return
 	}
 	cached := GetConfig().GetCache().CheckBlockData(blockId)
@@ -26,7 +43,8 @@ func BlockTotalHandler(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 		println("downloading data")
 		data, err := getBlockFromEtherscan(blockId)
 		if err != nil {
-			fmt.Fprint(w, "{\"error\"=\"Something went wrong with etherscan\"}")
+			println("error with etherscan", err.Error())
+			_, _ = fmt.Fprint(w, "{\"error\"=\"Something went wrong with etherscan\"}")
 			return
 		}
 		cached = &data
@@ -37,10 +55,10 @@ func BlockTotalHandler(w http.ResponseWriter, r *http.Request, ps httprouter.Par
 
 	jData, err := json.Marshal(*cached)
 	if err != nil {
-		fmt.Fprintf(w, "{\"error\"=\"Something went wrong \\( o_o) / /.. .. .\")")
-		println(err)
+		_, _ = fmt.Fprintf(w, "{\"error\"=\"Something went wrong \\( o_o) / /.. .. .\")")
+		println(err.Error())
 		return
 	}
 
-	w.Write(jData)
+	_, _ = w.Write(jData)
 }
